@@ -1,0 +1,634 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<title>process</title>
+	<link rel="stylesheet" href="css/s.css">
+	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
+</head>
+<body>
+	<div id="viz"></div>
+	<script>
+		var league;
+		d3.csv("data/all_results.csv",function(d){
+
+			d.HomeTeam=d.HomeTeam.toLowerCase();
+			d.AwayTeam=d.AwayTeam.toLowerCase();
+
+			return d;
+		},function(error,data){
+			//console.log(data);
+
+			function getPoints(home,result) {
+				if(result=="D") {
+					return 1;
+				}
+				if(result=="H" && home) {
+					return 3;
+				}
+				if(result=="A" && !home) {
+					return 3;
+				}
+				return 0;
+			}
+
+			function getDate(date) {
+				var parts = date.split("/");
+				return new Date(	parseInt(parts[2], 10),
+									parseInt(parts[1], 10) - 1,
+									parseInt(parts[0], 10)
+							);
+			}
+
+			var teams={};
+
+			data.forEach(function(d){
+				//console.log(d);
+
+				
+
+				var home=d.HomeTeam,
+					away=d.AwayTeam;
+
+				if(!teams[home]) {
+					teams[home]=[];
+
+					teams[home].push({
+						day:0,
+						h_day:0,
+						a_day:0,
+						team:home,
+						against:away,
+						points:0,
+						cumulative:0,
+						h_cumulative:0,
+						a_cumulative:0
+					});
+				}
+
+				if(!teams[away]) {
+					teams[away]=[];
+
+					teams[away].push({
+						day:0,
+						h_day:0,
+						a_day:0,
+						team:away,
+						against:home,
+						points:0,
+						cumulative:0,
+						h_cumulative:0,
+						a_cumulative:0
+					});
+				}
+
+				var homeDay={
+					day:teams[home].length,
+					h_day:teams[home][teams[home].length-1].h_day+1,
+					a_day:teams[home][teams[home].length-1].a_day,
+					date:getDate(d["Date"]),
+					l:"h",
+					team:home,
+					against:away,
+					points:getPoints(1,d["FTR"]),
+					cumulative:teams[home].length?teams[home][teams[home].length-1].cumulative+getPoints(1,d["FTR"]):getPoints(1,d["FTR"]),
+					h_cumulative:teams[home].length?teams[home][teams[home].length-1].h_cumulative+getPoints(1,d["FTR"]):getPoints(1,d["FTR"]),
+					a_cumulative:teams[home].length?teams[home][teams[home].length-1].a_cumulative:0
+				};
+
+				teams[home].push(homeDay);
+
+				var awayDay={
+					day:teams[away].length,
+					h_day:teams[away][teams[away].length-1].h_day,
+					a_day:teams[away][teams[away].length-1].a_day+1,
+					date:getDate(d["Date"]),
+					l:"a",
+					team:away,
+					against:home,
+					points:getPoints(0,d["FTR"]),
+					cumulative:teams[away].length?teams[away][teams[away].length-1].cumulative+getPoints(0,d["FTR"]):getPoints(0,d["FTR"]),
+					h_cumulative:teams[away].length?teams[away][teams[away].length-1].h_cumulative:0,
+					a_cumulative:teams[away].length?teams[away][teams[away].length-1].a_cumulative+getPoints(0,d["FTR"]):getPoints(0,d["FTR"])
+				};
+
+				teams[away].push(awayDay);
+
+			})
+
+			league=new LeagueViz(teams);
+
+		});
+
+		function LeagueViz(league_data) {
+
+			console.log(league_data);
+
+			var LOCATION=null;
+			var CUMULATIVE=(LOCATION?LOCATION+"_":"")+"cumulative";
+			var DAY=(LOCATION?LOCATION+"_":"")+"day";
+
+			function processData2(teams,location) {
+
+
+
+				teams=d3.entries(teams).map(function(team){
+					//console.log("------------->",JSON.stringify(team));
+					return {
+						key:team.key,
+						value:team.value.filter(function(match){
+							
+							if (!location) return true;
+
+							return match.l==location || !match.l;
+						})
+					};
+				});
+				//console.log("TEEEEEEEEEEEEAMS",teams)
+				teams.forEach(function(d){
+					d.points=d3.sum(d.value,function(t){
+						return t.points;
+					});
+				});
+
+				teams.sort(function(a,b){
+					return b.points - a.points;
+				});
+
+				teams.forEach(function(t){
+					t.streaks=getStreak(t.value);
+				})
+
+				return {
+					days:teams[0].value.length,
+					min:0,
+					max:d3.max(teams,function(d){
+						return d.points;
+					}),
+					streaks_max:d3.max(teams,function(d){
+						return d3.max(d.streaks,function(s){
+							return s.matches.length;
+						})
+					}),
+					teams:teams
+				}
+			}
+
+			function processData(teams,location) {
+
+
+
+				teams=d3.entries(teams).map(function(team){
+					//console.log("------------->",JSON.stringify(team));
+					return {
+						key:team.key,
+						value:team.value.filter(function(match){
+							
+							if (!location) return true;
+
+							return match.l==location || !match.l;
+						})
+					};
+				});
+				//console.log("TEEEEEEEEEEEEAMS",teams)
+				teams.forEach(function(d){
+					d.points=d3.sum(d.value,function(t){
+						return t.points;
+					});
+				});
+
+				teams.sort(function(a,b){
+					return b.points - a.points;
+				});
+
+				teams.forEach(function(t){
+					t.streaks=getStreak(t.value);
+				})
+
+				return {
+					days:teams[0].value.length,
+					min:0,
+					max:d3.max(teams,function(d){
+						return d.points;
+					}),
+					streaks_max:d3.max(teams,function(d){
+						return d3.max(d.streaks,function(s){
+							return s.matches.length;
+						})
+					}),
+					teams:teams
+				}
+			}
+
+			var data=processData(league_data,LOCATION);
+
+			console.log("DAAAAAAAATAAAAAAAAA",data)
+
+			var DEG2RAD=Math.PI/180;
+			var RAD2DEG=180/Math.PI;
+
+			var WIDTH=1200,
+				HEIGHT=600;
+
+			var margins={
+				top:20,
+				bottom:20,
+				left:20,
+				right:80
+			};
+
+			var svg=d3.select("#viz")
+						.append("svg")
+						.attr("width",WIDTH)
+						.attr("height",HEIGHT)
+
+			var grid=svg.append("g")
+						.attr("id","grid")
+						.attr("transform","translate("+(margins.left)+","+(HEIGHT-margins.bottom)+")");
+
+			var streaks=svg.append("g")
+						.attr("id","streaks")
+						.attr("transform","translate("+(margins.left)+","+(HEIGHT-margins.bottom)+")");
+
+			var league=svg.append("g")
+						.attr("id","teams")
+						.attr("transform","translate("+(margins.left)+","+(HEIGHT-margins.bottom)+")");
+
+			
+
+			var xscale=d3.scale.linear()
+								.domain([0,data.days-1])
+								.range([0,WIDTH-(margins.left+margins.right)]);
+			var yscale=d3.scale.linear()
+								.domain([data.min,data.max])
+								.range([0,HEIGHT-(margins.top+margins.bottom)]);
+			
+			var streak_scale=d3.scale.pow().exponent(1)
+								.domain([0,data.streaks_max])
+								.range([2,10])
+
+			var teams=league.selectAll("g")
+					.data(data.teams,function(d){
+						return d.key;
+					})
+					.enter()
+						.append("g")
+						.attr("class","team")
+						.attr("id",function(d){
+							return d.key;
+						})
+
+			var streaks=streaks.selectAll("g")
+					.data(data.teams)
+					.enter()
+					.append("g")
+						.attr("id",function(d){
+							return "streaks_"+d.key;
+						})
+
+			
+
+			var streak=teams.selectAll("g.streak")
+					.data(function(d){
+						return d.streaks.filter(function(d){
+							return d.matches.length>1;
+						});
+					})
+					.enter()
+					.append("g")
+						.attr("class","streak")
+						.attr("rel",function(d){
+							return d.matches.length;
+						});
+
+			var line = d3.svg.line()
+					    .x(function(d) { return xscale(d["day"]); })
+					    .y(function(d) { return -yscale(d[CUMULATIVE]) })
+					    .interpolate("cardinal");
+
+			teams.append("path")
+					.attr("d",function(d){
+						return line(d.value);
+					})
+
+			teams.selectAll("circle.match")
+					.data(function(d){
+						return d.value;
+					},function(d,i){
+						return "day_"+d.team+"_"+d.day;
+					})
+					.enter()
+					.append("circle")
+						.attr("id",function(d){
+							return "day_"+d.team+"_"+d.day;
+						})
+						.attr("class",function(d){
+							return "match p"+d.points+" "+d.l;
+						})
+						.attr("cx",function(d){
+							return xscale(d[DAY]);
+						})
+						.attr("cy",function(d,i){
+							return -yscale(d[CUMULATIVE]);
+						})
+						.attr("r",2);
+
+			teams.append("text")
+					.attr("x",xscale(data.days-1))
+					.attr("y",function(d){
+						return -yscale(d.points)
+					})
+					.attr("dx","0.6em")
+					.attr("dy","0.3em")
+					.text(function(d){
+						return d.key;
+					})
+			function updateTeams(location) {
+				LOCATION=location;
+				CUMULATIVE=(LOCATION?LOCATION+"_":"")+"cumulative";
+				//DAY=(LOCATION?LOCATION+"_":"")+"day";
+
+				var max=d3.max(data.teams,function(d){
+					return d3.max(d.value.filter(function(m){
+						if(!location)
+							return true;
+						return m.l==location;
+					}),function(m){
+						return m[CUMULATIVE];
+					})
+				})
+
+				yscale.domain([data.min,max]);
+
+				teams.selectAll("circle.match")
+						.filter(function(d){
+							if(!location || !d.l)
+								return true;
+							return d.l==location;
+						})
+						.attr("rel",function(d){
+							return d.cumulative+" -- "+d[CUMULATIVE]
+						})
+						.transition()
+						.duration(2000)
+							.style("opacity",1)
+							.attr("cy",function(d){
+								return -yscale(d[CUMULATIVE]);
+							});
+
+
+				teams.selectAll("circle.match")
+						.filter(function(d){
+							if(!location || !d.l)
+								return false;
+							return d.l!=location;
+						})
+						.transition()
+						.duration(2000)
+							.style("opacity",function(m){
+								return 0;
+							})
+
+				teams.select("path")
+					.transition()
+					.duration(2000)
+						.attr("d",function(d){
+							return line(d.value.filter(function(m){
+								if(!location || !m.l)
+									return true;
+								return m.l==location;
+							}));
+						})
+
+				teams.select("text")
+					.transition()
+					.duration(2000)
+					.attr("y",function(d){
+						console.log(".............................",d)
+
+						var max=d3.max(d.value.filter(function(m){
+							if(!location)
+								return true;
+							return m.l==location;
+						}),function(m){
+							return m[CUMULATIVE];
+						})
+
+						return -yscale(max);
+					});
+
+			}
+			function updateTeams2(location) {
+				
+				LOCATION=location;
+				CUMULATIVE=(LOCATION?LOCATION+"_":"")+"cumulative";
+				DAY=(LOCATION?LOCATION+"_":"")+"day";
+
+				data=processData(league_data,LOCATION);
+
+				console.log(data)
+
+				//alert(data.days)
+
+				//xscale.domain([0,data.days-1]);
+				yscale.domain([data.min,data.max]);
+				streak_scale.domain([0,data.streaks_max]);
+
+				teams.data(data.teams,function(d){
+							return d.key;
+						})
+						.enter()
+							.append("g")
+							.attr("class","team")
+							.attr("id",function(d){
+								return d.key;
+							});
+
+				var matches=teams.selectAll("circle.match")
+					.data(function(d){
+						//console.log("MATCH",d)
+						return d.value;
+					},function(d,i){
+						return "day_"+d.team+"_"+d.day;
+					});
+
+				matches.exit().remove();
+				
+
+				matches
+					.enter()
+					.append("circle")
+						.attr("id",function(d){
+							return "day_"+d.team+"_"+d.day;
+						})
+						.attr("class",function(d){
+							return "match p"+d.points+" "+d.l;
+						})						
+						.attr("r",2);
+
+				teams.selectAll("circle.match")
+						.transition()
+						.duration(2000)
+						.attr("cx",function(d){
+							return xscale(d[DAY]);
+						})
+						.attr("cy",function(d){
+							return -yscale(d[CUMULATIVE]);
+						})
+
+				teams.select("path")
+					.transition()
+					.duration(2000)
+						.attr("d",function(d){
+							return line(d.value);
+						})
+				/*
+				var vgrid=grid.selectAll("g.v")
+					.data(data.teams[0].value,function(d){
+						return "d"+d.day;
+					})
+
+				vgrid.exit().remove();
+
+				var new_vgrid=vgrid.enter()
+								.append("g")
+									.attr("class","v")
+									.attr("transform",function(d){
+										return "translate("+(xscale(d[DAY]))+",0)"
+									});
+
+				new_vgrid.append("line")
+						.attr("y2",-(HEIGHT-(margins.bottom+margins.top)))
+
+				new_vgrid.append("text")
+						.attr("y",10)
+						.text(function(d){
+							return d[DAY]+"/"+d.day;
+						})
+
+				vgrid
+					.transition()
+					.duration(2000)
+						.attr("transform",function(d){
+							return "translate("+(xscale(d[DAY]))+",0)"
+						});*/
+
+			}
+			
+			this.update=function(location) {
+				
+				updateTeams(location);
+			}
+
+			var streakPath = d3.svg.line()
+					    .x(function(d) { return xscale(d.day)+d.delta_y; })
+					    .y(function(d) { return -yscale(d.points)+d.delta_x })
+					    .interpolate("cardinal")
+
+			function drawStreak(matches) {
+
+				
+
+				var a=xscale(matches[1].day)-xscale(matches[0].day);
+				var b=yscale(matches[1].points)-yscale(matches[0].points);
+				var alpha=Math.atan(b/a);
+
+				//console.log("a=",a,"b=",b,"alpha=",alpha,"("+alpha*RAD2DEG+")");
+
+				
+
+				var matches2=matches.concat(matches.slice().reverse());
+
+				var a=[];
+				a.push({
+					day:matches2[0].day,
+					points:matches2[0].points,
+					delta:0,
+					delta_x: - (streak_scale(0)*Math.cos(alpha)),
+					delta_y: - (streak_scale(0)*Math.sin(alpha))
+				})
+
+				for(var i=1;i<matches2.length/2;i++) {
+					
+					a.push({
+						day:matches2[i].day,
+						points:matches2[i].points,
+						delta:-streak_scale(i),
+						delta_x: - (streak_scale(i)*Math.cos(alpha)),
+						delta_y: - (streak_scale(i)*Math.sin(alpha))
+					})
+
+				}
+			
+
+				for(var i=matches2.length/2-1;i>=0;i--) {
+					var x=xscale(matches2[i].day),
+						y=(-yscale(matches2[i].points))+streak_scale(i);
+
+					a.push({
+						day:matches2[i].day,
+						points:matches2[i].points,
+						delta:streak_scale(i),
+						delta_x: (streak_scale(i)*Math.cos(alpha)),
+						delta_y: (streak_scale(i)*Math.sin(alpha))
+					})
+				}
+
+				return streakPath(a);
+
+			}
+			/*streak.append("path")
+					.attr("d",function(d){
+						return drawStreak(d.matches);
+					});*/
+
+			var vgrid=grid.selectAll("g.v")
+					//.data(d3.range(data.days))
+					.data(data.teams[0].value,function(d){
+						return "d"+d.day;
+					})
+					.enter()
+					.append("g")
+						.attr("class","v")
+						.attr("transform",function(d){
+							return "translate("+(xscale(d[DAY]))+",0)"
+						});
+			vgrid.append("line")
+						.attr("y2",-(HEIGHT-(margins.bottom+margins.top)))
+
+			vgrid.append("text")
+						.attr("y",10)
+						.text(function(d){
+							return d[DAY]+"/"+d.day
+						})
+
+			function getStreak(matches) {
+				
+				//console.log("getStreak",matches)
+				var streaks=[];
+				var prev=0;
+				matches.forEach(function(d){
+					if(prev!=3 && d.points===3) {
+						streaks.push({
+							start:d.date,
+							matches:[{
+								day:d[DAY],
+								points:d[CUMULATIVE]
+							}]
+						});
+					}
+					if(prev===3 && d.points===3) {
+						streaks[streaks.length-1].matches.push({
+							day:d[DAY],
+							points:d[CUMULATIVE]
+						});
+					}
+					prev=d.points;
+				});
+				return streaks;
+			}
+		}
+
+	</script>
+</body>
+</html>

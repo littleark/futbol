@@ -1,0 +1,115 @@
+html,body {
+	margin: 0;
+	padding: 0;
+}
+
+#teams circle {
+	fill:#000;
+	fill-opacity:0.4;
+	stroke:none;
+	stroke-opacity:0;
+	stroke-width:4;
+}
+
+#teams g circle.p0 {
+	fill:red;
+	stroke:red;
+}
+#teams g circle.p1 {
+	fill:#339933;
+	stroke:#339933;
+}
+#teams g circle.p3 {
+	fill:blue;
+	stroke:blue;
+}
+
+#teams path {
+	fill:none;
+	stroke:gold;
+	/*shape-rendering: crispEdges;*/
+}
+
+#labels text,
+#teams text {
+	font-family: sans-serif;
+	font-size:10px;
+	text-transform: uppercase;
+	color:#ddd;
+}
+
+#teams g.team:hover path,
+#teams g.team.hover path {
+	stroke:#333;
+	stroke-width:1;
+}
+#teams g.team:hover circle,
+#teams g.team.hover circle {
+	stroke-opacity:0.6;
+	fill-opacity:0.6;
+}
+
+#teams g:hover text {
+	font-weight:bold;
+}
+
+#grid line {
+	stroke:#ddd;
+	stroke-opacity:0.5;
+	stroke-width:1;
+	shape-rendering: crispEdges;
+}
+
+#grid text {
+	font-family: sans-serif;
+	font-size:10px;
+	text-transform: uppercase;
+	text-anchor:middle;
+	color:#ddd;
+}
+
+#streaks line {
+	stroke:#ff0000;
+	stroke-opacity:1;
+	stroke-width:3;
+}
+#teams g.team g.streak path {
+	stroke:#333;
+	stroke-opacity:1;
+	stroke-width:0;
+	fill:#333;
+	fill-opacity:0.2;
+}
+#teams g.team:hover g.streak path,
+#teams g.team.hover g.streak path {
+	stroke:#ff6600;
+	stroke-opacity:1;
+	stroke-width:1;
+	fill:gold;
+	fill-opacity:0.7;
+}
+g.label line {
+	stroke:#ddd;
+}
+g.label line.straight {
+	shape-rendering: crispEdges;	
+}
+#teams g.team:hover g.label line,
+#teams g.team.hover g.label line {
+	stroke:#333;
+	stroke-width:1;
+}
+#teams g.team.winner g.label text {
+	fill:midnightblue !important;
+	font-weight: bold;
+}
+#teams g.team.cl g.label text {
+	fill:lightseagreen;
+}
+#teams g.team.el g.label text {
+	fill:#339933;
+}
+#teams g.team.fb g.label text {
+	fill:#a0091d;
+}
+
