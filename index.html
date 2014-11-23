@@ -9,6 +9,13 @@
 <body>
 	<div id="viz"></div>
 	<script>
+
+		d3.selection.prototype.moveToFront = function() {
+		  return this.each(function(){
+		    this.parentNode.appendChild(this);
+		  });
+		};
+
 		var league;
 		d3.csv("data/all_results.csv",function(d){
 
@@ -140,6 +147,8 @@
 
 			console.log(league_data);
 
+			var self=this;
+
 			var LOCATION=null;
 			var CUMULATIVE=(LOCATION?LOCATION+"_":"")+"cumulative";
 			var DAY=(LOCATION?LOCATION+"_":"")+"day";
@@ -181,6 +190,13 @@
 				right:20
 			};
 
+			var xscale=d3.scale.linear()
+								.domain([0,data.days-1])
+								.range([padding.left,WIDTH-(margins.left+margins.right+padding.right+padding.left)]);
+			var yscale=d3.scale.linear()
+								.domain([data.min,data.max])
+								.range([0,HEIGHT-(margins.top+margins.bottom)]);
+
 			var svg=d3.select("#viz")
 						.append("svg")
 						.attr("width",WIDTH)
@@ -198,16 +214,25 @@
 						.attr("id","teams")
 						.attr("transform","translate("+(margins.left)+","+(HEIGHT-margins.bottom)+")");
 
+			
+
 			var labels=svg.append("g")
 						.attr("id","labels")
-						.attr("transform","translate("+(WIDTH-(margins.right))+","+(HEIGHT-margins.bottom)+")")
+						.attr("class","labels")
+						.classed("hidden",true)
+						.attr("transform","translate("+(margins.left+padding.right+(xscale(38)))+","+(HEIGHT-margins.bottom)+")")
 
-			var xscale=d3.scale.linear()
-								.domain([0,data.days-1])
-								.range([padding.left,WIDTH-(margins.left+margins.right+padding.right+padding.left)]);
-			var yscale=d3.scale.linear()
-								.domain([data.min,data.max])
-								.range([0,HEIGHT-(margins.top+margins.bottom)]);
+			var fixed_labels=svg.append("g")
+						.attr("id","fixedLabels")
+						.attr("class","labels")
+						.attr("transform","translate("+(margins.left+padding.right+(xscale(38)))+","+(HEIGHT-margins.bottom)+")")
+
+			labels.append("rect")
+					.attr("class","bg")
+					.attr("x",0)
+					.attr("y",-(HEIGHT-margins.bottom))
+					.attr("width",WIDTH)
+					.attr("height",HEIGHT-margins.bottom)
 			
 			var streak_scale=d3.scale.pow().exponent(1)
 								.domain([0,data.streaks_max])
@@ -234,7 +259,9 @@
 						})
 						.attr("id",function(d){
 							return d.key;
-						})
+						});
+
+
 
 			var streaks=streaks.selectAll("g")
 					.data(data.teams)
@@ -310,12 +337,15 @@
 								.range([yscale(min),yscale(max)]);
 
 			var prev=null;
-			data.teams.forEach(function(d){
+			data.teams.forEach(function(d,i){
 				
 				var last=d.value[d.value.length-1];
 
 				//console.log(d.key,last[CUMULATIVE],yscale(last[CUMULATIVE]));
 				//console.log("PREV",prev)
+
+				d.position=i;
+
 				d.y=yscale(last[CUMULATIVE]);
 				if(prev && (prev.y - d.y < 10)) {
 					console.log(d.key,"(",d.y,")","over",prev.team,"(",prev.y,")")
@@ -331,8 +361,12 @@
 				};
 			})
 
-			labels=teams
-					.append("g")
+			var fixed_label=fixed_labels.selectAll("g")
+					.data(data.teams,function(d){
+						return d.key;
+					})
+					.enter()
+						.append("g")
 						.attr("class","label")
 						.attr("transform",function(d,i){
 
@@ -341,17 +375,30 @@
 							});
 							//var y=label_scale(i);
 							var y=d.y;
-							return "translate("+(WIDTH-margins.right-margins.left)+","+(-y)+")";
+							return "translate("+(0)+","+(-y)+")";
+						})
+						.on("mouseover",function(d){
+							teams
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
+								.moveToFront();
+						})
+						.on("mouseout",function(d){
+							teams
+								.classed("hover",false)
 						});
 
-			labels.append("text")
+			fixed_label.append("text")
 					.attr("x",5)
 					.attr("dy","0.3em")
 					.text(function(d,i){
-						return (i+1)+" "+d.key;
+						return (d.position+1)+" "+d.key+" "+d.value[d.value.length-1][CUMULATIVE];
 					})
 
-			labels.append("line")
+			fixed_label.append("line")
 					.classed("straight",function(d){
 						var max=d3.max(d.value,function(m){
 							return m[CUMULATIVE];
@@ -372,6 +419,75 @@
 						return delta;
 					})
 
+			var label=labels.selectAll("g")
+					.data(data.teams,function(d){
+						return d.key;
+					})
+					.enter()
+						.append("g")
+						.attr("class","label")
+						.attr("transform",function(d,i){
+
+							var max=d3.max(d.value,function(m){
+								return m[CUMULATIVE];
+							});
+							//var y=label_scale(i);
+							var y=d.y;
+							return "translate("+(0)+","+(-y)+")";
+						})
+						.on("mouseover",function(d){
+							teams
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
+								.moveToFront();
+
+							fixed_labels.selectAll("g")
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
+						})
+						.on("mouseout",function(d){
+							teams
+								.classed("hover",false)
+
+							fixed_labels.selectAll("g")
+								.classed("hover",false)
+						});
+
+			label.append("text")
+					.attr("x",5)
+					.attr("dy","0.3em")
+					.text(function(d,i){
+						return (d.position+1)+" "+d.key+" "+d.value[d.value.length-1][CUMULATIVE];
+					})
+
+			label.append("line")
+					.classed("straight",function(d){
+						var max=d3.max(d.value,function(m){
+							return m[CUMULATIVE];
+						});
+						return d.y==yscale(max);						
+					})
+					.attr("x1",0)
+					.attr("y1",0)
+					.attr("x2",(-padding.right+5))
+					.attr("y2",function(d,i){
+
+						var max=d3.max(d.value,function(m){
+							return m[CUMULATIVE];
+						});
+
+						var delta=d.y-yscale(max);
+
+						return delta;
+					})
+
+			
 
 			function updateTeams(location) {
 				LOCATION=location;
@@ -455,6 +571,111 @@
 				updateTeams(location);
 			}
 
+			this.selectDay=function(day) {
+				console.log(data.teams)
+				var selected_day=day || data.teams[0].value.length-1;
+
+				var prev=null;
+				data.teams
+					.sort(function(a,b){
+						if(b.value[selected_day][CUMULATIVE] == a.value[selected_day][CUMULATIVE]) {
+							return calculateAvulsa(data.teams,a.key,b.key,day);
+						}
+						return b.value[selected_day][CUMULATIVE] - a.value[selected_day][CUMULATIVE]
+					})
+					.forEach(function(d,i){
+					
+						d.position=i;
+						//console.log("!!!!!!!!!!!!!!!!!!",i,d)
+						var last=d.value[selected_day];
+
+						//console.log(d.key,last[CUMULATIVE],yscale(last[CUMULATIVE]));
+						//console.log("PREV",prev)
+						d.y=yscale(last[CUMULATIVE]);
+						if(prev && (prev.y - d.y < 10)) {
+							//console.log(d.key,"(",d.y,")","over",prev.team,"(",prev.y,")")
+							
+							d.y=prev.y-10;
+							
+						}
+						prev={
+							team:d.key,
+							y:d.y
+						};
+					})
+				var min_y=data.teams
+					.sort(function(a,b){
+						return b.value[selected_day][CUMULATIVE] - a.value[selected_day][CUMULATIVE]
+					})[data.teams.length-1].y;
+
+
+				/*teams.selectAll("circle.match")
+						.filter(function(d){
+							return d.day>selected_day;
+						})
+						//.transition()
+						//.duration(2000)
+							.style("opacity",0.2);*/
+
+				labels
+					.attr("transform",function(){
+
+						
+
+						//return "translate("+((margins.left))+","+(HEIGHT-margins.bottom)+")";
+
+						return "translate("+(xscale(selected_day)+margins.left+padding.right)+","+(HEIGHT-margins.bottom)+")";
+					})
+
+				labels.selectAll("g.label")
+						.attr("transform",function(d,i){
+
+							var max=d3.max(d.value.filter(function(m){
+								return m.day <= selected_day;
+							}),function(m){
+								return m[CUMULATIVE];
+							});
+							//var y=label_scale(i);
+							var y=d.y+(min_y<0?(-min_y+5):0);
+
+							return "translate("+0+","+(-y)+")";
+						});
+
+				labels.selectAll("g.label")
+					.select("line")
+					.classed("straight",function(d){
+						var max=d3.max(d.value.filter(function(m){
+							return m.day <= selected_day;
+						}),function(m){
+							return m[CUMULATIVE];
+						});
+						return d.y+(min_y<0?(-min_y+5):0)==yscale(max);						
+					})
+					.attr("y1",function(d,i){
+						return 0;
+					})
+					.attr("y2",function(d,i){
+
+						var max=d3.max(d.value.filter(function(m){
+							return m.day <= selected_day;
+						}),function(m){
+							return m[CUMULATIVE];
+						});
+
+						var delta=d.y-yscale(max);
+
+						return delta+(min_y<0?(-min_y+5):0);
+					})
+
+
+				labels.selectAll("text")
+					.text(function(d,i){
+						return (d.position+1)+" "+d.key+" "+d.value[day][CUMULATIVE];
+					})
+
+			}
+			
+
 			var streakPath = d3.svg.line()
 					    .x(function(d) { return xscale(d.day)+d.delta_y; })
 					    .y(function(d) { return -yscale(d.points)+d.delta_x })
@@ -527,7 +748,17 @@
 						.attr("class","v")
 						.attr("transform",function(d){
 							return "translate("+(xscale(d[DAY]))+",0)"
-						});
+						})
+						.on("click",function(d){
+							if(d[DAY]<data.days) {
+								labels.classed("hidden",false);
+								svg.classed("day",true)
+							} else {
+								labels.classed("hidden",true);
+								svg.classed("false",true)
+							}
+							self.selectDay(d[DAY]);
+						})
 			vgrid.append("line")
 						.attr("y2",-(HEIGHT-(margins.bottom+margins.top)))
 
@@ -613,7 +844,11 @@
 				}
 			}
 
-			function calculateAvulsa(teams,team1,team2) {
+			function calculateAvulsa(teams,team1,team2,selected_day) {
+				
+				var day = selected_day || teams[0].value[teams[0].value.length-1].day;
+
+				console.log(day,team1,team2)
 
 				var two_teams=teams.filter(function(t){
 					return t.key==team1 || t.key==team2;
@@ -622,37 +857,43 @@
 						team:team.key,
 						r:(team.key==team1)?-1:1,
 						matches:team.value.filter(function(t){
-							return t.against==team1 || t.against==team2;
+							return (t.against==team1 || t.against==team2) && t.day<=day;
 						}),
 						points:d3.sum(team.value.filter(function(t){
-							return t.against==team1 || t.against==team2;
+							return (t.against==team1 || t.against==team2) && t.day<=day;
 						}),function(d){
 							return d.points;
 						}),
 						diff:(function(){
 							var gf=d3.sum(team.value.filter(function(t){
-								return t.against==team1 || t.against==team2;
+								return (t.against==team1 || t.against==team2) && t.day<=day;
 							}),function(d){
 								return d.gf;
 							});
 							var gs=d3.sum(team.value.filter(function(t){
-								return t.against==team1 || t.against==team2;
+								return (t.against==team1 || t.against==team2) && t.day<=day;
 							}),function(d){
 								return d.gs;
 							});
 
 							return gf-gs;
 						}()),
-						diff_gen:team.value[team.value.length-1].tgf-team.value[team.value.length-1].tgs,
-						tgf:team.value[team.value.length-1].tgf
+						//diff_gen:team.value[team.value.length-1].tgf-team.value[team.value.length-1].tgs,
+						//tgf:team.value[team.value.length-1].tgf
+						diff_gen:team.value[day].tgf-team.value[day].tgs,
+						tgf:team.value[day].tgf
 					};
 				});
 				
-				/*
-				console.log("calculateAvulsa",team1.key,team2.key)
-				console.log(two_teams)
-				console.log("-----------------------")
-				*/
+				
+				if(two_teams.length<2) {
+					return 0;
+				}
+
+				//console.log("calculateAvulsa",team1,team2)
+				//console.log(two_teams)
+				//console.log("-----------------------")
+				
 
 
 				//Punti negli scontri diretti

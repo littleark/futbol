@@ -5,7 +5,7 @@ html,body {
 
 #teams circle {
 	fill:#000;
-	fill-opacity:0.4;
+	fill-opacity:0;
 	stroke:none;
 	stroke-opacity:0;
 	stroke-width:4;
@@ -26,11 +26,11 @@ html,body {
 
 #teams path {
 	fill:none;
-	stroke:gold;
+	stroke:#ddd;
 	/*shape-rendering: crispEdges;*/
 }
 
-#labels text,
+.labels text,
 #teams text {
 	font-family: sans-serif;
 	font-size:10px;
@@ -88,12 +88,33 @@ html,body {
 	fill:gold;
 	fill-opacity:0.7;
 }
+g#labels.hidden {
+	display: none;
+}
+g#labels rect.bg {
+	fill:#fff;
+	fill-opacity:0.8;
+}
 g.label line {
 	stroke:#ddd;
+}
+.day #fixedLabels line {
+	stroke-opacity:0.1;
 }
 g.label line.straight {
 	shape-rendering: crispEdges;	
 }
+g.label:hover line {
+	stroke:#333;
+}
+g.label:hover text,
+g.label.hover text {
+	font-weight: bold;
+}
+.day #fixedLabels g.label.hover line {
+	stroke-opacity:1;
+}
+
 #teams g.team:hover g.label line,
 #teams g.team.hover g.label line {
 	stroke:#333;
