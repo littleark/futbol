@@ -17,7 +17,7 @@
 		};
 
 		var league;
-		d3.csv("data/all_results.csv",function(d){
+		d3.csv("data/E0.csv",function(d){
 
 			d.HomeTeam=d.HomeTeam.toLowerCase();
 			d.AwayTeam=d.AwayTeam.toLowerCase();
@@ -145,6 +145,10 @@
 
 		function LeagueViz(league_data) {
 
+			var CIRCLE={
+				r:3
+			}
+
 			console.log(league_data);
 
 			var self=this;
@@ -160,27 +164,19 @@
 				fb:[17,18,19]
 			}
 
-
-
-			
-
-			var data=processData(league_data,LOCATION);
-
-			console.log("DAAAAAAAATAAAAAAAAA",data)
-
 			var DEG2RAD=Math.PI/180;
 			var RAD2DEG=180/Math.PI;
 
 			var WIDTH=1200,
 				HEIGHT=600;
 			var WIDTH=window.innerWidth-20,
-				HEIGHT=window.innerHeight-20;
+				HEIGHT=Math.min(500,window.innerHeight-20);
 
 			var margins={
 				top:20,
 				bottom:20,
 				left:20,
-				right:100
+				right:120
 			};
 
 			var padding={
@@ -190,12 +186,48 @@
 				right:20
 			};
 
-			var xscale=d3.scale.linear()
-								.domain([0,data.days-1])
-								.range([padding.left,WIDTH-(margins.left+margins.right+padding.right+padding.left)]);
-			var yscale=d3.scale.linear()
-								.domain([data.min,data.max])
-								.range([0,HEIGHT-(margins.top+margins.bottom)]);
+			var COMPUTED_WIDTH=WIDTH-(margins.left+margins.right+padding.right+padding.left),
+				DAY_SPACE=0;
+
+			var xscale=d3.scale.linear();
+			var yscale=d3.scale.linear();
+			var streak_scale=d3.scale.pow().exponent(1);
+			var data={};
+
+			function update() {
+				data=processData(league_data,LOCATION);
+
+				DAY_SPACE=COMPUTED_WIDTH/data.days;
+
+				console.log("DAAAAAAAATAAAAAAAAA",data)
+
+				xscale.domain([0,(data.teams.length-1)*2])
+						.range([padding.left,COMPUTED_WIDTH]);
+				yscale.domain([data.min,data.max])
+						.range([0,HEIGHT-(margins.top+margins.bottom)]);
+				streak_scale.domain([0,data.streaks_max])
+						.range([2,15])
+
+				var prev=null;
+				data.teams.forEach(function(d,i){
+					
+					var last=d.value[d.value.length-1];
+
+					d.position=i;
+
+					d.y=yscale(last[CUMULATIVE]);
+					if(prev && (prev.y - d.y < 10)) {
+						console.log(d.key,"(",d.y,")","over",prev.team,"(",prev.y,")")
+						d.y=prev.y-10;
+					}
+					prev={
+						team:d.key,
+						y:d.y
+					};
+				})
+			}
+			
+			update();
 
 			var svg=d3.select("#viz")
 						.append("svg")
@@ -229,15 +261,11 @@
 
 			labels.append("rect")
 					.attr("class","bg")
-					.attr("x",0)
+					.attr("x",-padding.right+CIRCLE.r)
 					.attr("y",-(HEIGHT-margins.bottom))
 					.attr("width",WIDTH)
 					.attr("height",HEIGHT-margins.bottom)
 			
-			var streak_scale=d3.scale.pow().exponent(1)
-								.domain([0,data.streaks_max])
-								.range([2,10])
-
 			var teams=league.selectAll("g")
 					.data(data.teams,function(d){
 						return d.key;
@@ -259,9 +287,14 @@
 						})
 						.attr("id",function(d){
 							return d.key;
-						});
-
-
+						})
+						.on("mouseover",function(d){
+							d3.select(this)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.moveToFront();
+						})
 
 			var streaks=streaks.selectAll("g")
 					.data(data.teams)
@@ -270,8 +303,6 @@
 						.attr("id",function(d){
 							return "streaks_"+d.key;
 						})
-
-			
 
 			var streak=teams.selectAll("g.streak")
 					.data(function(d){
@@ -316,7 +347,7 @@
 						.attr("cy",function(d,i){
 							return -yscale(d[CUMULATIVE]);
 						})
-						.attr("r",2);
+						.attr("r",CIRCLE.r);
 
 			
 
@@ -336,31 +367,7 @@
 								.domain([19,0])
 								.range([yscale(min),yscale(max)]);
 
-			var prev=null;
-			data.teams.forEach(function(d,i){
-				
-				var last=d.value[d.value.length-1];
-
-				//console.log(d.key,last[CUMULATIVE],yscale(last[CUMULATIVE]));
-				//console.log("PREV",prev)
-
-				d.position=i;
-
-				d.y=yscale(last[CUMULATIVE]);
-				if(prev && (prev.y - d.y < 10)) {
-					console.log(d.key,"(",d.y,")","over",prev.team,"(",prev.y,")")
-					//console.log(prev.y,"-",d.y,"=",(prev.y-d.y),"<",10);
-					//d.y+=(prev.y-d.y);
-					d.y=prev.y-10;
-					//console.log("so",d.key,"=>",d.y)
-					//console.log("-----------------------")
-				}
-				prev={
-					team:d.key,
-					y:d.y
-				};
-			})
-
+			
 			var fixed_label=fixed_labels.selectAll("g")
 					.data(data.teams,function(d){
 						return d.key;
@@ -385,17 +392,41 @@
 								})
 								.classed("hover",true)
 								.moveToFront();
+
+							labels.selectAll("g")
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
 						})
 						.on("mouseout",function(d){
 							teams
 								.classed("hover",false)
+							labels.selectAll("g")
+								.classed("hover",false)
 						});
 
 			fixed_label.append("text")
+				.attr("class","team")
 					.attr("x",5)
 					.attr("dy","0.3em")
-					.text(function(d,i){
-						return (d.position+1)+" "+d.key+" "+d.value[d.value.length-1][CUMULATIVE];
+					.html(function(d,i){
+						return ((d.position<9)?"&nbsp;":"")+(d.position+1)+" "+d.key;
+					})
+
+			fixed_label.append("text")
+				.attr("class","points")
+					.attr("x",padding.right+margins.right-(margins.left*2+padding.left))
+					.attr("dy","0.3em")
+					.html(function(d,i){
+						var space="&nbsp;&nbsp;",
+							value=d.value[d.value.length-1][CUMULATIVE]
+						if(value>10)
+							space="&nbsp;"
+						if(value>100)
+							space="";
+						return space+value;
 					})
 
 			fixed_label.append("line")
@@ -460,12 +491,13 @@
 						});
 
 			label.append("text")
+				.attr("class","team")
 					.attr("x",5)
 					.attr("dy","0.3em")
 					.text(function(d,i){
-						return (d.position+1)+" "+d.key+" "+d.value[d.value.length-1][CUMULATIVE];
+						return (d.position+1)+" "+d.key.substr(0,3);
 					})
-
+					
 			label.append("line")
 					.classed("straight",function(d){
 						var max=d3.max(d.value,function(m){
@@ -487,9 +519,19 @@
 						return delta;
 					})
 
-			
+			function updateTeams() {
 
-			function updateTeams(location) {
+				teams.selectAll("circle.match")
+						.transition()
+						.duration(2000)
+							.style("opacity",1)
+							.attr("cy",function(d){
+								return -yscale(d[CUMULATIVE]);
+							});
+
+			}
+
+			function updateTeams2(location) {
 				LOCATION=location;
 				CUMULATIVE=(LOCATION?LOCATION+"_":"")+"cumulative";
 				//DAY=(LOCATION?LOCATION+"_":"")+"day";
@@ -567,7 +609,7 @@
 			
 			
 			this.update=function(location) {
-				
+				update();
 				updateTeams(location);
 			}
 
@@ -618,6 +660,8 @@
 							.style("opacity",0.2);*/
 
 				labels
+					.transition()
+					.duration(500)
 					.attr("transform",function(){
 
 						
@@ -628,6 +672,9 @@
 					})
 
 				labels.selectAll("g.label")
+						.transition()
+						.delay(500)
+						.duration(500)
 						.attr("transform",function(d,i){
 
 							var max=d3.max(d.value.filter(function(m){
@@ -651,27 +698,43 @@
 						});
 						return d.y+(min_y<0?(-min_y+5):0)==yscale(max);						
 					})
-					.attr("y1",function(d,i){
-						return 0;
+					.transition()
+						.duration(500)
+							.attr("y1",function(d,i){
+								return 0;
+							})
+							.attr("y2",function(d,i){
+
+								var max=d3.max(d.value.filter(function(m){
+									return m.day <= selected_day;
+								}),function(m){
+									return m[CUMULATIVE];
+								});
+
+								var delta=d.y-yscale(max);
+
+								return delta+(min_y<0?(-min_y+5):0);
+							})
+
+
+
+				labels.selectAll("text.team")
+					.html(function(d,i){
+
+						var space="&nbsp;&nbsp;",
+							points=d.value[day][CUMULATIVE];
+							if(points>=10)
+								space="&nbsp;"
+							if(points>100)
+								space="";
+
+						return ((d.position<9)?"&nbsp;":"")+(d.position+1)+" "+d.key.substr(0,3)+" "+space+points;
 					})
-					.attr("y2",function(d,i){
 
-						var max=d3.max(d.value.filter(function(m){
-							return m.day <= selected_day;
-						}),function(m){
-							return m[CUMULATIVE];
-						});
-
-						var delta=d.y-yscale(max);
-
-						return delta+(min_y<0?(-min_y+5):0);
-					})
-
-
-				labels.selectAll("text")
+				/*labels.selectAll("text.points")
 					.text(function(d,i){
-						return (d.position+1)+" "+d.key+" "+d.value[day][CUMULATIVE];
-					})
+						return d.value[day][CUMULATIVE];
+					})*/
 
 			}
 			
@@ -757,10 +820,28 @@
 								labels.classed("hidden",true);
 								svg.classed("false",true)
 							}
+							grid.selectAll("g.v")
+								.classed("future",false)
+								.classed("selected",false)
+								.filter(function(t){
+									return t.day>d.day;
+								})
+								.classed("future",true);
+
+							d3.select(this)
+								.classed("selected",true)
+
 							self.selectDay(d[DAY]);
 						})
 			vgrid.append("line")
 						.attr("y2",-(HEIGHT-(margins.bottom+margins.top)))
+
+			vgrid.append("rect")
+						.attr("class","bg")
+						.attr("x",-DAY_SPACE/2)
+						.attr("y",-5)
+						.attr("width",DAY_SPACE*2)
+						.attr("height",20);
 
 			vgrid.append("text")
 						.attr("y",10)
