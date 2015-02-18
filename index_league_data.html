@@ -7,84 +7,8 @@
 	<script src="http://d3js.org/d3.v3.min.js" charset="utf-8"></script>
 </head>
 <body>
-	<select id="countries"></select>
-	<select id="seasons"></select>
 	<div id="viz"></div>
 	<script>
-
-		var countries=[
-			{
-				c:"England",
-				id:"EN"
-			},
-			{
-				c:"Italy",
-				id:"IT"
-			},
-			{
-				c:"Spain",
-				id:"ES"
-			},
-			{
-				c:"Germany",
-				id:"DE"
-			},
-			{
-				c:"Scotland",
-				id:"SCT"
-			},
-			{
-				c:"Turkey",
-				id:"TR"
-			},
-			{
-				c:"France",
-				id:"FR"
-			}
-		]
-
-		d3.select("#countries")
-			.on("change",function(d){
-				updateData(this.options[this.selectedIndex].value,null)
-			})
-			.selectAll("option")
-			.data(countries)
-			.enter()
-			.append("option")
-				.attr("value",function(d){
-					return d.id;
-				})
-				.text(function(d){
-					return d.c;
-				})
-
-		d3.select("#seasons")
-			.on("change",function(d){
-				updateData(null,this.options[this.selectedIndex].value);
-			})
-			.selectAll("option")
-			.data(function(){
-				var seasons=[];
-				var min=1993,
-					max=2014;
-				for(var y=min;y<=max;y++) {
-					//console.log(y,(""+y).substr(2),((y+1)+"").substr(2))
-					seasons.push({
-						id:(""+y).substr(2)+((""+(y+1)).substr(2)),
-						year:y+"/"+(y+1)
-					})
-				}
-				console.log(seasons)
-				return seasons;
-			}())
-			.enter()
-			.append("option")
-				.attr("value",function(d){
-					return d.id;
-				})
-				.text(function(d){
-					return d.year;
-				})
 
 		function getSearchParameters() {
 			var prmstr = window.location.search.substr(1);
@@ -107,38 +31,42 @@
 		  });
 		};
 
-		var league;
-
-		var params = getSearchParameters();
-		loadData(params["y"],params["c"],function(data){
-			league=new LeagueViz(data);
-			league.init(params["c"],params["y"]);
-		})
-
-		function updateData(country,year,callback) {
-			
-			year=year || league.getCurrentYear(),
-			country=country || league.getCurrentCountry();
-
-			loadData(year,country,function(data){
-				league.updateData(data,country,year);
-			})			
+		var YEAR=1993,
+			TXT="";
+		function calculateAll() {
+			calculateLeague(YEAR,function(){
+				YEAR++;
+				if(YEAR<=2014) {
+					calculateAll();
+				} else {
+					d3.select("#viz").html(TXT);
+				}
+			});	
 		}
+		calculateAll();
 
-		function loadData(year,country,callback) {
-
+		function calculateLeague(year,callback) {
 
 			
+
+			var league;
+
+			var params = getSearchParameters();
 
 			var url="http://localhost/futbol/getData.php?t="+(new Date().getTime());
-			url+="&y="+year;
-			url+="&c="+country;
-			
+			if(year) {
+
+				url+="&y="+((""+year).substr(2)+(""+(year+1)).substr(2));
+			}
+			if(params["y"]) {
+				url+="&y="+params["y"].substr(2);
+			}
+			if(params["c"]) {
+				url+="&c="+params["c"];
+			}
 
 			console.log("URLLLLLLLLLL",url)
-
-
-
+			
 			//d3.csv("data/E0.csv",function(d){
 			d3.csv(url,function(d){
 				
@@ -148,6 +76,10 @@
 				return d;
 			},function(error,data){
 				//console.log(data);
+
+				data=data.filter(function(d){
+					return d["Div"]!="";
+				})
 
 				function getPoints(home,result) {
 					if(result=="D") {
@@ -261,24 +193,78 @@
 					teams[away].push(awayDay);
 
 				})
+				
+				var days=[];
+
+				d3.entries(teams).forEach(function(team){
+					team.value.forEach(function(day){
+						if(!days[day.day]) {
+							days[day.day]=[];	
+						}
+						days[day.day].push({
+							team:team.key,
+							points:day.cumulative,
+							date:day.date,
+							day:day.day
+						})
+					})
+				})
+
+				console.log(days);
+
+				var processed_data=processData(teams,null);
+
+				days.forEach(function(day,i){
+					day.sort(function(a,b){
+						if(b.points == a.points) {
+							return calculateAvulsa(processed_data.teams,a.team,b.team,a.day);
+						}
+						return b.points - a.points
+					})
+				});
+				
+				console.log("DAYS",days);
+
+				var last_standing=days[days.length-1].map(function(t){
+					return t.team;
+				})
+
+				var final_data=[];
+				days.forEach(function(day,day_index){
+					day.forEach(function(team,position){
+						final_data.push({
+							team:team.team,
+							year:year,//params["y"].substr(0,4),
+							day:day_index,
+							points:team.points,
+							position:position
+							//final_position:last_standing.indexOf(team.team)
+						})
+					})
+				})
+
+				console.log(final_data);
+				
+				final_data.forEach(function(d){
+					//console.log(d3.values(d))
+					TXT+=d3.values(d)+"<br/>";
+				})
 
 				if(callback) {
-					callback(teams);
+					callback();
 				}
+				
 
+				//league=new LeagueViz(teams);
 			});
-		}
 
-		
+		}
 
 		function LeagueViz(league_data) {
 
 			var CIRCLE={
 				r:3
 			}
-
-			var CURRENT_COUNTRY,
-				CURRENT_YEAR;
 
 			console.log(league_data);
 
@@ -324,13 +310,6 @@
 			var yscale=d3.scale.linear();
 			var streak_scale=d3.scale.pow().exponent(1);
 			var data={};
-
-			this.getCurrentCountry=function() {
-				return CURRENT_COUNTRY;
-			}
-			this.getCurrentYear=function() {
-				return CURRENT_YEAR;
-			}
 
 			function update() {
 				data=processData(league_data,LOCATION);
@@ -404,45 +383,7 @@
 					.attr("width",WIDTH)
 					.attr("height",HEIGHT-margins.bottom)
 			
-			var teams;
-			this.init=function(country,year) {
-				CURRENT_COUNTRY=country;
-				CURRENT_YEAR=year;
-
-				addTeams();
-				addFixedLabels();
-				addLabels();
-			}
-
-			function clean(callback) {
-				teams
-					.transition()
-					.duration(2000)
-						.style("opacity",0)
-						.remove();
-
-				fixed_labels
-					.selectAll("g.label")
-					.transition()
-					.duration(2000)
-						.style("opacity",0)
-						.remove();
-
-				labels
-					.selectAll("g.label")
-					.transition()
-					.duration(2000)
-						.style("opacity",0)
-						.remove()
-						.each("end",function(d,i){
-							if(i===0) {
-								callback();
-							}
-						})
-			}	
-
-			function addTeams() {
-				teams=league.selectAll("g")
+			var teams=league.selectAll("g")
 					.data(data.teams,function(d){
 						return d.key;
 					})
@@ -472,302 +413,228 @@
 								.moveToFront();
 						})
 
-				var line = d3.svg.line()
-						    .x(function(d) { return xscale(d["day"]); })
-						    .y(function(d) { return -yscale(d[CUMULATIVE]) })
-						    //.interpolate("monotone");
-
-				teams.append("path")
-						.attr("d",function(d){
-							return line(d.value);
+			var streaks=streaks.selectAll("g")
+					.data(data.teams)
+					.enter()
+					.append("g")
+						.attr("id",function(d){
+							return "streaks_"+d.key;
 						})
-				
-				addStreaks(teams);
 
-				teams.selectAll("circle.match")
-						.data(function(d){
-							return d.value;
-						},function(d,i){
+			var streak=teams.selectAll("g.streak")
+					.data(function(d){
+						return d.streaks.filter(function(d){
+							return d.matches.length>1;
+						});
+					})
+					.enter()
+					.append("g")
+						.attr("class","streak")
+						.attr("rel",function(d){
+							return d.matches.length;
+						});
+
+			var line = d3.svg.line()
+					    .x(function(d) { return xscale(d["day"]); })
+					    .y(function(d) { return -yscale(d[CUMULATIVE]) })
+					    //.interpolate("monotone");
+
+			teams.append("path")
+					.attr("d",function(d){
+						return line(d.value);
+					})
+
+			teams.selectAll("circle.match")
+					.data(function(d){
+						return d.value;
+					},function(d,i){
+						return "day_"+d.team+"_"+d.day;
+					})
+					.enter()
+					.append("circle")
+						.attr("id",function(d){
 							return "day_"+d.team+"_"+d.day;
 						})
-						.enter()
-						.append("circle")
-							.attr("id",function(d){
-								return "day_"+d.team+"_"+d.day;
-							})
-							.attr("class",function(d){
-								return "match p"+d.points+" "+d.l;
-							})
-							.attr("cx",function(d){
-								return xscale(d[DAY]);
-							})
-							.attr("cy",function(d,i){
-								return -yscale(d[CUMULATIVE]);
-							})
-							.attr("r",CIRCLE.r);
-			}
+						.attr("class",function(d){
+							return "match p"+d.points+" "+d.l;
+						})
+						.attr("cx",function(d){
+							return xscale(d[DAY]);
+						})
+						.attr("cy",function(d,i){
+							return -yscale(d[CUMULATIVE]);
+						})
+						.attr("r",CIRCLE.r);
+
 			
-			function addStreaks(teams) {
-				/*var streaks=streaks.selectAll("g")
-						.data(data.teams)
-						.enter()
-						.append("g")
-							.attr("id",function(d){
-								return "streaks_"+d.key;
-							})*/
 
-				var streak=teams.selectAll("g.streak")
-						.data(function(d){
-							return d.streaks.filter(function(d){
-								return d.matches.length>1;
-							});
-						})
-						.enter()
-						.append("g")
-							.attr("class","streak")
-							.attr("rel",function(d){
-								return d.matches.length;
-							});
+			var max=d3.max(data.teams,function(d){
+				return d3.max(d.value,function(m){
+					return m[CUMULATIVE];
+				})
+			});
 
-				var streakPath = d3.svg.line()
-						    .x(function(d) { return xscale(d.day)+d.delta_y; })
-						    .y(function(d) { return -yscale(d.points)+d.delta_x })
-						    .interpolate("cardinal")
+			var min=d3.min(data.teams,function(d){
+				return d3.max(d.value,function(m){
+					return m[CUMULATIVE];
+				})
+			});
+			
+			var label_scale=d3.scale.linear()
+								.domain([19,0])
+								.range([yscale(min),yscale(max)]);
 
-				function drawStreak(matches) {
-
-					
-
-					var a=xscale(matches[1].day)-xscale(matches[0].day);
-					var b=yscale(matches[1].points)-yscale(matches[0].points);
-					var alpha=Math.atan(b/a);
-
-					//console.log("a=",a,"b=",b,"alpha=",alpha,"("+alpha*RAD2DEG+")");
-
-					
-
-					var matches2=matches.concat(matches.slice().reverse());
-
-					var a=[];
-					a.push({
-						day:matches2[0].day,
-						points:matches2[0].points,
-						delta:0,
-						delta_x: - (streak_scale(0)*Math.cos(alpha)),
-						delta_y: - (streak_scale(0)*Math.sin(alpha))
+			
+			var fixed_label=fixed_labels.selectAll("g")
+					.data(data.teams,function(d){
+						return d.key;
 					})
+					.enter()
+						.append("g")
+						.attr("class","label")
+						.attr("transform",function(d,i){
 
-					for(var i=1;i<matches2.length/2;i++) {
-						
-						a.push({
-							day:matches2[i].day,
-							points:matches2[i].points,
-							delta:-streak_scale(i),
-							delta_x: - (streak_scale(i)*Math.cos(alpha)),
-							delta_y: - (streak_scale(i)*Math.sin(alpha))
+							var max=d3.max(d.value,function(m){
+								return m[CUMULATIVE];
+							});
+							//var y=label_scale(i);
+							var y=d.y;
+							return "translate("+(0)+","+(-y)+")";
 						})
+						.on("mouseover",function(d){
+							teams
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
+								.moveToFront();
 
-					}
-				
-
-					for(var i=matches2.length/2-1;i>=0;i--) {
-						var x=xscale(matches2[i].day),
-							y=(-yscale(matches2[i].points))+streak_scale(i);
-
-						a.push({
-							day:matches2[i].day,
-							points:matches2[i].points,
-							delta:streak_scale(i),
-							delta_x: (streak_scale(i)*Math.cos(alpha)),
-							delta_y: (streak_scale(i)*Math.sin(alpha))
+							labels.selectAll("g")
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
 						})
-					}
-
-					return streakPath(a);
-
-				}
-				streak.append("path")
-						.attr("d",function(d){
-							return drawStreak(d.matches);
+						.on("mouseout",function(d){
+							teams
+								.classed("hover",false)
+							labels.selectAll("g")
+								.classed("hover",false)
 						});
-			}
-			
 
-			
-			function addFixedLabels() {
-				var max=d3.max(data.teams,function(d){
-					return d3.max(d.value,function(m){
-						return m[CUMULATIVE];
+			fixed_label.append("text")
+				.attr("class","team")
+					.attr("x",5)
+					.attr("dy","0.3em")
+					.html(function(d,i){
+						return ((d.position<9)?"&nbsp;":"")+(d.position+1)+" "+d.key;
 					})
-				});
 
-				var min=d3.min(data.teams,function(d){
-					return d3.max(d.value,function(m){
-						return m[CUMULATIVE];
+			fixed_label.append("text")
+				.attr("class","points")
+					.attr("x",padding.right+margins.right-(margins.left*2+padding.left))
+					.attr("dy","0.3em")
+					.html(function(d,i){
+						var space="&nbsp;&nbsp;",
+							value=d.value[d.value.length-1][CUMULATIVE]
+						if(value>10)
+							space="&nbsp;"
+						if(value>100)
+							space="";
+						return space+value;
 					})
-				});
-				
-				var label_scale=d3.scale.linear()
-									.domain([19,0])
-									.range([yscale(min),yscale(max)]);
 
-				
-				var fixed_label=fixed_labels.selectAll("g")
-						.data(data.teams,function(d){
-							return d.key;
-						})
-						.enter()
-							.append("g")
-							.attr("class","label")
-							.attr("transform",function(d,i){
+			fixed_label.append("line")
+					.classed("straight",function(d){
+						var max=d3.max(d.value,function(m){
+							return m[CUMULATIVE];
+						});
+						return d.y==yscale(max);						
+					})
+					.attr("x1",0)
+					.attr("y1",0)
+					.attr("x2",(-padding.right+5))
+					.attr("y2",function(d,i){
 
-								var max=d3.max(d.value,function(m){
-									return m[CUMULATIVE];
-								});
-								//var y=label_scale(i);
-								var y=d.y;
-								return "translate("+(0)+","+(-y)+")";
-							})
-							.on("mouseover",function(d){
-								teams
-									.classed("hover",false)
-									.filter(function(t){
-										return t.key==d.key
-									})
-									.classed("hover",true)
-									.moveToFront();
+						var max=d3.max(d.value,function(m){
+							return m[CUMULATIVE];
+						});
 
-								labels.selectAll("g")
-									.classed("hover",false)
-									.filter(function(t){
-										return t.key==d.key
-									})
-									.classed("hover",true)
-							})
-							.on("mouseout",function(d){
-								teams
-									.classed("hover",false)
-								labels.selectAll("g")
-									.classed("hover",false)
-							});
+						var delta=d.y-yscale(max);
 
-				fixed_label.append("text")
-					.attr("class","team")
-						.attr("x",5)
-						.attr("dy","0.3em")
-						.html(function(d,i){
-							return ((d.position<9)?"&nbsp;":"")+(d.position+1)+" "+d.key;
-						})
+						return delta;
+					})
 
-				fixed_label.append("text")
-					.attr("class","points")
-						.attr("x",padding.right+margins.right-(margins.left*2+padding.left))
-						.attr("dy","0.3em")
-						.html(function(d,i){
-							var space="&nbsp;&nbsp;",
-								value=d.value[d.value.length-1][CUMULATIVE]
-							if(value>10)
-								space="&nbsp;"
-							if(value>100)
-								space="";
-							return space+value;
-						})
-
-				fixed_label.append("line")
-						.classed("straight",function(d){
-							var max=d3.max(d.value,function(m){
-								return m[CUMULATIVE];
-							});
-							return d.y==yscale(max);						
-						})
-						.attr("x1",0)
-						.attr("y1",0)
-						.attr("x2",(-padding.right+5))
-						.attr("y2",function(d,i){
+			var label=labels.selectAll("g")
+					.data(data.teams,function(d){
+						return d.key;
+					})
+					.enter()
+						.append("g")
+						.attr("class","label")
+						.attr("transform",function(d,i){
 
 							var max=d3.max(d.value,function(m){
 								return m[CUMULATIVE];
 							});
-
-							var delta=d.y-yscale(max);
-
-							return delta;
+							//var y=label_scale(i);
+							var y=d.y;
+							return "translate("+(0)+","+(-y)+")";
 						})
-			}
-			
-			function addLabels() {
-				var label=labels.selectAll("g")
-						.data(data.teams,function(d){
-							return d.key;
+						.on("mouseover",function(d){
+							teams
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
+								.moveToFront();
+
+							fixed_labels.selectAll("g")
+								.classed("hover",false)
+								.filter(function(t){
+									return t.key==d.key
+								})
+								.classed("hover",true)
 						})
-						.enter()
-							.append("g")
-							.attr("class","label")
-							.attr("transform",function(d,i){
+						.on("mouseout",function(d){
+							teams
+								.classed("hover",false)
 
-								var max=d3.max(d.value,function(m){
-									return m[CUMULATIVE];
-								});
-								//var y=label_scale(i);
-								var y=d.y;
-								return "translate("+(0)+","+(-y)+")";
-							})
-							.on("mouseover",function(d){
-								teams
-									.classed("hover",false)
-									.filter(function(t){
-										return t.key==d.key
-									})
-									.classed("hover",true)
-									.moveToFront();
+							fixed_labels.selectAll("g")
+								.classed("hover",false)
+						});
 
-								fixed_labels.selectAll("g")
-									.classed("hover",false)
-									.filter(function(t){
-										return t.key==d.key
-									})
-									.classed("hover",true)
-							})
-							.on("mouseout",function(d){
-								teams
-									.classed("hover",false)
+			label.append("text")
+				.attr("class","team")
+					.attr("x",5)
+					.attr("dy","0.3em")
+					.html(function(d,i){
+						return (d.position+1)+" "+d.key.substr(0,3);
+					})
+					
+			label.append("line")
+					.classed("straight",function(d){
+						var max=d3.max(d.value,function(m){
+							return m[CUMULATIVE];
+						});
+						return d.y==yscale(max);						
+					})
+					.attr("x1",0)
+					.attr("y1",0)
+					.attr("x2",(-padding.right+5))
+					.attr("y2",function(d,i){
 
-								fixed_labels.selectAll("g")
-									.classed("hover",false)
-							});
+						var max=d3.max(d.value,function(m){
+							return m[CUMULATIVE];
+						});
 
-				label.append("text")
-					.attr("class","team")
-						.attr("x",5)
-						.attr("dy","0.3em")
-						.html(function(d,i){
-							return (d.position+1)+" "+d.key.substr(0,3);
-						})
-						
-				label.append("line")
-						.classed("straight",function(d){
-							var max=d3.max(d.value,function(m){
-								return m[CUMULATIVE];
-							});
-							return d.y==yscale(max);						
-						})
-						.attr("x1",0)
-						.attr("y1",0)
-						.attr("x2",(-padding.right+5))
-						.attr("y2",function(d,i){
+						var delta=d.y-yscale(max);
 
-							var max=d3.max(d.value,function(m){
-								return m[CUMULATIVE];
-							});
-
-							var delta=d.y-yscale(max);
-
-							return delta;
-						})
-			}
-			
-
-			
+						return delta;
+					})
 
 			function updateTeams() {
 
@@ -778,17 +645,6 @@
 							.attr("cy",function(d){
 								return -yscale(d[CUMULATIVE]);
 							});
-
-				teams.select("path")
-					.transition()
-					.duration(2000)
-						.attr("d",function(d){
-							return line(d.value.filter(function(m){
-								if(!location || !m.l)
-									return true;
-								return m.l==location;
-							}));
-						})
 
 			}
 
@@ -868,28 +724,7 @@
 
 			}
 			
-			this.updateData=function(data,country,year) {
-				console.log(data);
-
-				CURRENT_COUNTRY=country;
-				CURRENT_YEAR=year;
-
-				league_data=data;
-
-				update();
-				
-				clean(function(){
-					addTeams();
-					addFixedLabels();
-					addLabels();
-				})
-				
-				
-
-				//updateTeams();
-
-			}
-
+			
 			this.update=function(location) {
 				update();
 				updateTeams(location);
@@ -1021,7 +856,67 @@
 			}
 			
 
+			var streakPath = d3.svg.line()
+					    .x(function(d) { return xscale(d.day)+d.delta_y; })
+					    .y(function(d) { return -yscale(d.points)+d.delta_x })
+					    .interpolate("cardinal")
+
+			function drawStreak(matches) {
+
+				
+
+				var a=xscale(matches[1].day)-xscale(matches[0].day);
+				var b=yscale(matches[1].points)-yscale(matches[0].points);
+				var alpha=Math.atan(b/a);
+
+				//console.log("a=",a,"b=",b,"alpha=",alpha,"("+alpha*RAD2DEG+")");
+
+				
+
+				var matches2=matches.concat(matches.slice().reverse());
+
+				var a=[];
+				a.push({
+					day:matches2[0].day,
+					points:matches2[0].points,
+					delta:0,
+					delta_x: - (streak_scale(0)*Math.cos(alpha)),
+					delta_y: - (streak_scale(0)*Math.sin(alpha))
+				})
+
+				for(var i=1;i<matches2.length/2;i++) {
+					
+					a.push({
+						day:matches2[i].day,
+						points:matches2[i].points,
+						delta:-streak_scale(i),
+						delta_x: - (streak_scale(i)*Math.cos(alpha)),
+						delta_y: - (streak_scale(i)*Math.sin(alpha))
+					})
+
+				}
 			
+
+				for(var i=matches2.length/2-1;i>=0;i--) {
+					var x=xscale(matches2[i].day),
+						y=(-yscale(matches2[i].points))+streak_scale(i);
+
+					a.push({
+						day:matches2[i].day,
+						points:matches2[i].points,
+						delta:streak_scale(i),
+						delta_x: (streak_scale(i)*Math.cos(alpha)),
+						delta_y: (streak_scale(i)*Math.sin(alpha))
+					})
+				}
+
+				return streakPath(a);
+
+			}
+			streak.append("path")
+					.attr("d",function(d){
+						return drawStreak(d.matches);
+					});
 
 			var vgrid=grid.selectAll("g.v")
 					//.data(d3.range(data.days))
@@ -1098,60 +993,58 @@
 				return streaks;
 			}
 
-			function processData(teams,location) {
+			
+
+			
+		}
+
+		function processData(teams,location) {
 
 
 
-				teams=d3.entries(teams).map(function(team){
-					//console.log("------------->",JSON.stringify(team));
-					return {
-						key:team.key,
-						value:team.value.filter(function(match){
-							
-							if (!location) return true;
-
-							return match.l==location || !match.l;
-						})
-					};
-				});
-				//console.log("TEEEEEEEEEEEEAMS",teams)
-				teams.forEach(function(d){
-					d.points=d3.sum(d.value,function(t){
-						return t.points;
-					});
-				});
-
-				teams.sort(function(a,b){
-					if(b.points == a.points) {
-						return calculateAvulsa(teams,a.key,b.key);
-					}
-					return b.points - a.points;
-				});
-
-				teams.forEach(function(t){
-					t.streaks=getStreak(t.value);
-				})
-
+			teams=d3.entries(teams).map(function(team){
+				//console.log("------------->",JSON.stringify(team));
 				return {
-					days:teams[0].value.length,
-					min:0,
-					max:d3.max(teams,function(d){
-						return d.points;
-					}),
-					streaks_max:d3.max(teams,function(d){
-						return d3.max(d.streaks,function(s){
-							return s.matches.length;
-						})
-					}),
-					teams:teams
+					key:team.key,
+					value:team.value.filter(function(match){
+						
+						if (!location) return true;
+
+						return match.l==location || !match.l;
+					})
+				};
+			});
+			//console.log("TEEEEEEEEEEEEAMS",teams)
+			teams.forEach(function(d){
+				d.points=d3.sum(d.value,function(t){
+					return t.points;
+				});
+			});
+
+			teams.sort(function(a,b){
+				if(b.points == a.points) {
+					return calculateAvulsa(teams,a.key,b.key);
 				}
+				return b.points - a.points;
+			});
+
+			
+
+			return {
+				days:teams[0].value.length,
+				min:0,
+				max:d3.max(teams,function(d){
+					return d.points;
+				}),
+				teams:teams
 			}
+		}
 
-			function calculateAvulsa(teams,team1,team2,selected_day) {
+		function calculateAvulsa(teams,team1,team2,selected_day) {
 				
-				var day = selected_day || teams[0].value[teams[0].value.length-1].day;
+				var day = selected_day;// || teams[0].value[teams[0].value.length-1].day;
 
-				console.log(day,team1,team2)
+				console.log(selected_day,team1,team2,teams)
 
 				var two_teams=teams.filter(function(t){
 					return t.key==team1 || t.key==team2;
@@ -1180,11 +1073,11 @@
 							});
 
 							return gf-gs;
-						}()),
+						}())//,
 						//diff_gen:team.value[team.value.length-1].tgf-team.value[team.value.length-1].tgs,
 						//tgf:team.value[team.value.length-1].tgf
-						diff_gen:team.value[day].tgf-team.value[day].tgs,
-						tgf:team.value[day].tgf
+						//diff_gen:team.value[day].tgf-team.value[day].tgs,
+						//tgf:team.value[day].tgf
 					};
 				});
 				
@@ -1240,7 +1133,6 @@
 				//sorteggio
 				return 0;
 			}
-		}
 
 	</script>
 </body>
